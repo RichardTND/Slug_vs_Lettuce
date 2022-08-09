@@ -8,8 +8,8 @@ gamecode:
 	
 			sei
 			 
-		 
 			//Silent SID chip
+			
 			ldx #$00
 stopsnd:	lda #$00
 			sta $d400,x
@@ -44,6 +44,29 @@ drawScreen: lda gameScreen,x
 			sta colourRam+$2e8,x 
 			inx 
 			bne drawScreen 
+
+
+			// Zero score as digits
+
+			ldx #$00
+zeroScore:
+			lda #$30
+			sta score,x 		
+			inx 
+			cpx #6
+			bne zeroScore
+
+			lda #$35 // No of lives = 5
+			sta lives
+
+			lda #$35
+			sta time
+			lda #$30
+			sta time+1
+			lda #$30
+			sta time+2
+
+			jsr updatePanel
 			
 			// Setup VIC2 graphics 
 			// charset and background 
@@ -137,6 +160,17 @@ setdfltsprs:
 			lda #$00
 			jsr musicInit
 			cli
+
+			lda #testPosX
+			sta lettucePosX
+			lda #testPosY
+			sta lettucePosY
+			lda #$0d
+			sta $d028
+			lda #0
+			sta shieldPointer
+			lda #200
+			sta slugShieldTime
 			jmp gameLoop
 						
 // The main IRQ raster interrupt. We 
@@ -156,10 +190,9 @@ gameIRQ:	asl $d019
 // The main game loop subroutine
 
 gameLoop:	jsr syncRaster			
-			jsr playerControl
-			jsr playerBehaviour
-			jsr spriteCharCollision
+			jsr playerProperties
 			jsr waterDroplets
+			jsr spriteToSpriteCollision
 			jmp gameLoop //Must loop!
 			
 // Synchronize timer with raster IRQ 
@@ -299,13 +332,44 @@ movechrslft:
 			bne movechrslft
 			rts
 			
-			
+// Main player properties
+playerProperties:
+			jsr shieldStatus
+			jsr playerControl
+			jsr playerBehaviour
+			jsr spriteCharCollision
+			rts
+
+// Test player shield 
+
+shieldStatus:
+
+			lda slugShieldTime
+			beq noShield
+			dec slugShieldTime
+			ldx shieldPointer
+			lda shieldColourTable,x
+			sta $d027 //This is the player sprite colour
+			inx 
+			cpx #7 
+			beq resetFlashShield
+			inc shieldPointer
+			rts 
+
+resetFlashShield:
+			ldx #0
+			stx shieldPointer
+			lda #5
+			rts 
+noShield:
+			lda #5
+			sta $d027 //This is the player sprite colour
+			rts			
+
 // Main player control 
 
 playerControl:
  
-			
-			
 			// Check joystick LEFT 
 			
 			lda #4
@@ -359,11 +423,12 @@ checkFire:	lda $dc00
 			sta fireButton
 			lda playerIsAllowedToPressFire
 			beq noJoyControl 
-			 
+						 
 			ldx #0
 			stx playerJumpPointer
 			lda #0 
 			sta playerIsFalling
+			sta playerIsAllowedToPressFire
 			lda #1
 			sta playerIsJumping
 noJoyControl:
@@ -372,10 +437,8 @@ noJoyControl:
 playerBehaviour:
 			
 			jsr jumpCheck 
-			jsr fallCheck 
-			jsr debug_jump_physics
-			rts
-			
+			jmp fallCheck 
+
 // Check whether or not the player is 
 // on ground or jumping. If the 
 // pointer playerIsJumping = 0, then
@@ -520,22 +583,6 @@ platformFound:
 skipCollisionLogic:			
 			rts
 	
-debug_jump_physics:
-
-			lda playerIsFalling
-			clc 
-			adc #$30
-			sta $07c0 
-			lda playerIsJumping
-			clc 
-			adc #$30 
-			sta $07c1 
-			lda playerIsAllowedToPressFire
-			clc 
-			adc #$30
-			sta $07c2 
-			rts		
-
 // Drop all of the water droplets down the screen.
 
 waterDroplets:
@@ -563,7 +610,7 @@ testOffset:
 
 testDroplet1Out:
 			lda dropletPosY
-			cmp #$fa 
+			cmp #$ca 
 			bcc droplet1OK
 			jsr randomize
 			sta dropletPosX
@@ -574,7 +621,7 @@ droplet1OK:
 
 testDroplet2Out:
 			lda dropletPosY+2
-			cmp #$fa
+			cmp #$ca
 			bcc droplet2OK
 			jsr randomize
 			sta dropletPosX+2
@@ -585,7 +632,7 @@ droplet2OK:
 
 testDroplet3Out:
 			lda dropletPosY+4
-			cmp #$fa
+			cmp #$ca
 			bcc droplet3OK
 			jsr randomize 
 			sta dropletPosX+4
@@ -595,7 +642,7 @@ droplet3OK:	rts
 
 testDroplet4Out:
 			lda dropletPosY+6
-			cmp #$fa 
+			cmp #$ca 
 			bcc droplet4OK
 			jsr randomize 
 			sta dropletPosX+6
@@ -605,7 +652,7 @@ droplet4OK:	rts
 
 testDroplet5Out:
 			lda dropletPosY+8
-			cmp #$fa
+			cmp #$ca
 			bcc droplet5OK
 			jsr randomize
 			sta dropletPosX+8
@@ -615,7 +662,7 @@ droplet5OK:	rts
 
 testDroplet6Out:
 			lda dropletPosY+10
-			cmp #$fa
+			cmp #$ca
 			bcc droplet6OK
 			jsr randomize
 			sta dropletPosX+10
@@ -645,16 +692,218 @@ randomize:	lda dropRand
 			lda dropRand+1
 			adc #$36
 			sta dropRand+1
-			and #$0f
+			cmp #16	// Total amount of values for new start position X. 
+			bcs randomize // If range is >16 then loop randomize routine until value within range is found
 			sta newpos
-			ldx newpos
+
+			ldx newpos	// Read new table position for water droplet.
 			lda randPosTable,x
 			rts
 
+// Game sprite to sprite collision. This can be based
+// in two forms. 
+
+// 1. The slug gets the lettuce
+// 2. The salty water kills the slug
+
+spriteToSpriteCollision:
+
+		//Store box collision co-ordinated from 
+		//player sprite
+		
+			lda slugPosX
+			sec
+			sbc #spriteBoxLeft
+			sta spriteColliderLeft
+			clc
+			adc #spriteBoxRight
+			sta spriteColliderRight
+			lda slugPosY
+			sec
+			sbc #spriteBoxTop
+			sta spriteColliderTop
+			clc
+			adc #spriteBoxBottom
+			sta spriteColliderBottom
+			
+			jsr slugVsLettuce
+			jmp slugVsWater
+			
+// Collision check, slug on lettuce sprite
+// if contact in range, remove lettuce 
+// and score points
+			
+slugVsLettuce:			
+			lda lettucePosX			
+			cmp spriteColliderLeft			
+			bcc noLettuceEaten			
+			cmp spriteColliderRight 			
+			bcs noLettuceEaten			
+			lda lettucePosY			
+			cmp spriteColliderTop			
+			bcc noLettuceEaten			
+			cmp spriteColliderBottom			
+			bcs noLettuceEaten			
+			
+			// The player eats the lettuce			
+				
+lettuceEaten:
+
+			jsr score500
+
+			// No lettuce has been eaten so no			
+			// collision			
+
+//Randomize new lettuce position
+overrange:
+	  		lda lettuceRand
+			sta lettuceRandTemp 
+			lda lettuceRand
+			asl
+			rol lettuceRandTemp
+			asl
+			rol lettuceRandTemp
+			clc
+			adc lettuceRand
+			pha
+			lda lettuceRandTemp
+			adc lettuceRand+1
+			sta lettuceRand+1
+			pla
+			adc #$11
+			sta lettuceRand
+			lda lettuceRand+1
+			adc #$36
+			sta lettuceRand+1
+			sta newpos2
+			cmp #12				//Total number of values for lettuce new X, Y position
+			bcs overrange		//if range > 12 then loop random check until matching value has been found.
+
+			ldx newpos2			//Read table of bytes and store new X,Y position for lettuce
+
+			lda lettuceXTable,x
+			sta lettucePosX
+			lda lettuceYTable,x 
+			sta lettucePosY
+			rts
+		 							
+noLettuceEaten:						
+			rts			
+						
+// Score 200 points 
+
+score500:	ldy #4
+scoreLoop0:
+			jsr scoreAdd
+			dey 
+			bpl scoreLoop0
+			rts
+
+scoreAdd:	inc score+3 
+			ldx #4
+scoreLoop:	lda score,x 
+			cmp #$3a 
+			bne scoreNotOver
+			lda #$30
+			sta score,x 
+			inc score-1,x
+scoreNotOver:
+			dex
+			bne scoreLoop			
+			jmp updatePanel 
+
+//Update score panel to display score and hi score 
+//values to screen score, hi score and time 
+//position 
+
+updatePanel:
+			ldx #0
+putScore:	lda score,x 
+			sta scoreTextPos,x 
+			lda hiscore,x 
+			sta hiScoreTextPos,x 
+			inx 
+			cpx #6 
+			bne putScore
+
+			lda time
+			sta timeTextPos
+			lda time+1
+			sta timeTextPos2
+			lda time+2
+			sta timeTextPos3
+			lda lives
+			sta livesTextPos
+			rts
+
+
+// Collision check: Slug vs Droplets. 					
+
+slugVsWater:
+
+			lda slugShieldTime
+			beq readWaterCollision
+			rts
+
+readWaterCollision:
+
+			ldx #0
+checkSprCol:
+			lda dropletPosX,x
+			cmp spriteColliderLeft
+			bcc noHit
+			cmp spriteColliderRight
+			bcs noHit
+			lda dropletPosY,x
+			cmp spriteColliderTop
+			bcc noHit
+			cmp spriteColliderBottom
+			bcs noHit
+			
+
+			jmp slugHit
+noHit:			
+			inx
+			inx
+			cpx #12
+			bne checkSprCol
+skipWaterCollision:			
+			rts
+
+// The slug is hit. Check if the player has more than one lives
+// if so, activate a shield as its lives counter. Otherwise 
+// set it to instant death.
+
+slugHit:	lda lives
+			cmp #$31 // $31 = value 1 in lives as digits
+			beq lastLifeLost
+					
+			// Last life is not lost, so reset the 
+			// shield pointer, and timer and deduct one
+			// life from the counter
+
+			lda #200
+			sta slugShieldTime
+			lda #0
+			sta shieldPointer
+			dec lives
+			jmp updatePanel
+
+		// The last life has been lost, so set life count 
+		// to zero, update the panel and destroy the slugh
+
+lastLifeLost:
+			inc $d020
+			jmp *-3					
+
+
+			rts					
+									
 
 // Game pointers 			
 rp:			.byte 0 //Raster pointer to sync with IRQ
-newpos:     .byte 0		
+newpos:     .byte 0	
+newpos2:	.byte 0	
 pointers:
 
 // GFX animation pointer 
@@ -666,6 +915,12 @@ spriteAnimDelay: .byte 0
 spriteAnimPointer: .byte 0
 spriteAnimPointer2: .byte 0
 spriteAnimPointer3: .byte 0
+
+// Sprite collision pointers 
+spriteColliderLeft: .byte 0
+spriteColliderRight: .byte 0
+spriteColliderTop: .byte 0
+spriteColliderBottom: .byte 0
 
 // Player properties:
 
@@ -684,9 +939,15 @@ lettuceSprite: .byte $84
 
 dropRandTemp: .byte $5a
 dropRand: .byte %10011101,%01011011
+dropletSpeed: .byte $00,$01,$00,$02,$00,$03,$00,$01,$00,$03,$00,$02
 
-dropletSpeed: .byte $00,$03,$00,$02,$00,$03,$00,$04,$00,$03,$00,$02
+lettuceRandTemp: .byte $5a
+lettuceRand: .byte %10011101,%0101011
 
+// Lettuce X and Y location tables
+
+lettuceXTable: .byte $56,$36,$7a,$12,$9c,$32,$7c,$56,$26,$7e,$0c,$a2
+lettuceYTable: .byte $40,$58,$58,$6a,$6a,$7e,$7e,$98,$b0,$b0,$c8,$c8
 
 playJumpTable:
 			 
@@ -728,15 +989,6 @@ randPosTable:	.byte 012,024,036,048,056,060
 				.byte 072,084,096,120,132,144
 				.byte 156,160,012,024
 
- 
-
-
-
-
-
-
-
-
 // Game sprite animation tables
 
 slugRightFrame: .byte $80,$81
@@ -755,3 +1007,16 @@ collectFrame:   .byte $92,$93,$94,$95,$96,$97
 
 jumpTable:		.byte $fd,$fc,$fb,$fb,$fb,$fb,$fb,$fb,$fb
 jumpTableEnd:				
+
+// Score pointers
+
+score:			.byte $30,$30,$30,$30,$30,$30
+hiscore:		.byte $30,$30,$30,$30,$30,$30 
+time:			.byte $30,$30,$30
+lives:			.byte $30
+
+// Shield pointers 
+
+slugShieldTime:		.byte $00
+shieldPointer: 		.byte $00
+shieldColourTable:  .byte $05,$03,$0d,$01,$0d,$03,$05

@@ -43,13 +43,25 @@
 .label collZP = $02
 .label bottomGroundPosition = $c4 // The most bottom ground position in which the player can fall to
 
-// Set BASIC run for executable project 
-		
-		BasicUpstart2(start)
+// Box collider sizes for sprites
+.label spriteBoxLeft = 6
+.label spriteBoxRight = 12
+.label spriteBoxTop = 12
+.label spriteBoxBottom = 32
 
-		*=$0810
-start:		
-		jmp gamecode
+.label testPosX = $56
+.label testPosY = $40
+
+// Screen positions for text object
+
+.label scoreTextPos = $07c6
+.label livesTextPos = $07d4
+.label timeTextPos = $07d9 
+.label timeTextPos2 = $07db
+.label timeTextPos3 = $07dc
+.label hiScoreTextPos = $07e2
+
+BasicUpstart2(mainCode)
 
 		//Game soundtrack
 		*=$1000 "MUSIC"
@@ -77,5 +89,6 @@ gameAttribs:
 		
 		//Main game code
 		*=$4000 "GAME CODE"
+mainCode:	
 		.import source "gamecode.asm"
 		
