@@ -3,12 +3,44 @@
 //	Switch off previous IRQ raster 
 //  interrupts, and prepare the game 
 //  screen 
- 
+
+//---------------------------------------------------------- 
+
 gamecode:	
-	
+
 			sei
 			 
-			//Silent SID chip
+			/* Clear out all of the interrupts and SID and 
+		     do a short delay cycle routine */
+
+			ldx #$31
+			ldy #$ea
+			lda #$81
+			stx $0314
+			sty $0315
+			sta $dc0d
+			sta $dd0d
+			lda #$00
+			sta $d01a
+			sta $d019
+
+			// Switch off the screen for a little bit
+
+			lda #$0b
+			sta $d011
+
+			lda #$00
+			sta $d020
+			sta $d021
+
+			// Clear out the SID chip
+
+			ldx #$00
+noTitleSid:	lda #$00
+			sta $d400,x
+			inx 
+			cpx #$18
+			bne noTitleSid 
 			
 			ldx #$00
 stopsnd:	lda #$00
@@ -17,9 +49,14 @@ stopsnd:	lda #$00
 			cpx #$18 //(SID: $D400-$D418)
 			bne stopsnd 
 			
-			// Draw game screen and 
-			// colour attributes
-			
+//---------------------------------------------------------- 
+
+/* Draw out the main game screen. This game screen
+   was created using Charpad V2.0 (Work file has 
+   also been included. Also draw the colour from 
+   the attributes table into the screen's colour RAM */
+
+
 			ldx #$00
 drawScreen: lda gameScreen,x
 			sta screenRam,x
@@ -45,6 +82,7 @@ drawScreen: lda gameScreen,x
 			inx 
 			bne drawScreen 
 
+//---------------------------------------------------------- 
 
 			// Zero score as digits
 
@@ -56,28 +94,32 @@ zeroScore:
 			cpx #6
 			bne zeroScore
 
-			lda #$35 // No of lives = 5
+			// Set the starting number of lives to 5 ($35 = number character 5)
+			lda #$39
 			sta lives
 
-			lda #$35
+			// Set the starting time to 9 minutes and 59 seconds. 10 mins = 9:59 - 0:00
+
+			lda #$39
 			sta time
-			lda #$30
+			lda #$35
 			sta time+1
-			lda #$30
+			lda #$39
 			sta time+2
+
+			// Then refresh the score panel
 
 			jsr updatePanel
 			
-			// Setup VIC2 graphics 
-			// charset and background 
-			// colours.
+			/* Setup VIC2 graphics  charset and background 
+   			colours. */
 			
 			lda #$18 //Screen multicol
 			sta $d016 // on
 			lda #$1c //Charset at $3000
 			sta $d018
 			
-			//Background colours 
+			//Background colour scheme
 			
 			lda #$00
 			sta $d020 //Border +
@@ -87,8 +129,7 @@ zeroScore:
 			lda #$08
 			sta $d023 //BG Mcol 2
 			
-			// Initialise all game 
-			// pointers.
+			// Initialise all game pointers
 			
 			ldx #$00
 initpointers: lda #$00
@@ -97,8 +138,140 @@ initpointers: lda #$00
 			cpx #pointersend-pointers 
 			bne initpointers 
 			
+
+			// Ensure slug falls at start of game
+
 			lda #1
 			sta playerIsFalling
+			
+			// Setup sprite hardware properties
+
+			lda #$0b
+			sta $d025
+			lda #$01
+			sta $d026
+			lda #$ff
+			sta $d015
+			sta $d01c
+			lda #0
+			sta $d017
+			sta $d01b
+			sta $d01d
+					
+			ldx #$fb
+			txs
+//---------------------------------------------------------- 
+
+// Little delay while screen blank (prevent fire button sensitivity)
+
+			ldx #$00
+gdelay1:	ldy #$00
+gdelay2:	iny 
+			bne gdelay2
+			inx 
+			bne gdelay1
+
+//----------------------------------------------------------
+// Setup game IRQ raster interrupts 
+
+			ldx #<gameIRQ 
+			ldy #>gameIRQ
+			lda #$7f
+			stx $0314
+			sty $0315
+			sta $dc0d 
+			sta $dd0d 
+			lda #$32
+			sta $d012 
+			lda #$1b
+			sta $d011
+			lda #$01
+			sta $d01a 
+			lda #$00
+			jsr musicInit
+			cli
+
+//---------------------------------------------------------- 
+
+// Setup the Get Ready screen (and sprites)
+			
+getReadyScreen:			
+
+			ldx #$00
+putGetReadyPos:
+			lda getReadyPos,x
+			sta objPos,x 
+			inx
+			cpx #16 
+			bne putGetReadyPos 
+
+			// Fill sprites green 
+
+			ldx #$00
+makeGreen1:
+			lda #$0d
+			sta $d027,x 
+			inx 
+			cpx #8
+			bne makeGreen1 
+
+			// Make sprite GET READY frame
+
+			lda letter_g
+			sta $07f8 
+			lda letter_e 
+			sta $07f9 
+			lda letter_t 
+			sta $07fa 
+
+			lda letter_r 
+			sta $07fb 
+			lda letter_e
+			sta $07fc 
+			lda letter_a 
+			sta $07fd 
+			lda letter_d
+			sta $07fe
+			lda letter_y
+			sta $07ff 
+
+			lda #0
+			sta fireButton
+
+//---------------------------------------------------------- 
+
+/* Main get Ready Loop, which calls a subroutine to  
+   synchronize the raster with IRQ interrupt so that the 
+   speed of the animation/game play matches the value inside 
+   the IRQ raster interrupt */
+
+getReadyLoop:
+			lda #0
+			sta rp
+			cmp rp
+			beq *-3
+			jsr expandMSB
+			lda $dc00
+			lsr 
+			lsr 
+			lsr 
+			lsr
+			lsr
+			bit fireButton
+			ror fireButton
+			bmi getReadyLoop
+			bvc getReadyLoop
+
+//---------------------------------------------------------- 
+
+// Setup and reposition main game sprites 			
+
+			lda #$0d
+			sta $d028
+			lda #0
+			sta shieldPointer
+			lda #shieldDuration
+			sta slugShieldTime
 			
 			// Reset all sprites
 			
@@ -128,54 +301,18 @@ setdfltsprs:
 			inx
 			cpx #8
 			bne setdfltsprs
-			
-			lda #$0b
-			sta $d025
-			lda #$01
-			sta $d026
-			lda #$ff
-			sta $d015
-			sta $d01c
-			lda #0
-			sta $d017
-			sta $d01b
-			sta $d01d
-					
-			ldx #$fb
-			txs
-// Setup game IRQ raster interrupts 
-			ldx #<gameIRQ 
-			ldy #>gameIRQ
-			lda #$7f
-			stx $0314
-			sty $0315
-			sta $dc0d 
-			sta $dd0d 
-			lda #$32
-			sta $d012 
-			lda #$1b
-			sta $d011
-			lda #$01
-			sta $d01a 
-			lda #$00
-			jsr musicInit
-			cli
 
-			lda #testPosX
-			sta lettucePosX
-			lda #testPosY
-			sta lettucePosY
-			lda #$0d
-			sta $d028
+			jsr randomLettucePos
+
 			lda #0
-			sta shieldPointer
-			lda #200
-			sta slugShieldTime
+			sta fireButton
+
 			jmp gameLoop
-						
-// The main IRQ raster interrupt. We 
-// only need to use one interrupt for 
-// this game.
+
+//---------------------------------------------------------- 
+
+/* The main IRQ raster interrupt. We  only need to use one
+   interrupt for this game. */
 
 gameIRQ:	asl $d019 
 			lda $dc0d 
@@ -187,15 +324,24 @@ gameIRQ:	asl $d019
 			sta rp //Raster pointer
 			jmp $ea7e
 	
+//---------------------------------------------------------- 
+
 // The main game loop subroutine
 
-gameLoop:	jsr syncRaster			
+gameLoop:	jsr syncRaster	
+
+			// Game control
 			jsr playerProperties
 			jsr waterDroplets
 			jsr spriteToSpriteCollision
-			jmp gameLoop //Must loop!
-			
-// Synchronize timer with raster IRQ 
+			jsr playTime
+			jmp gameLoop
+
+//---------------------------------------------------------- 
+
+/* Synchronize timer with raster position (rp), ensure 
+   sprites use whole screen area X, also animate the 
+   water fall and all game sprites. */
 
 syncRaster:	lda #0
 			sta rp
@@ -205,8 +351,10 @@ syncRaster:	lda #0
 			jsr animateWater
 			jsr animateSpriteData
 			rts
-			
-// Expand sprite X and Y position 
+//---------------------------------------------------------- 	
+
+// Make object position pointers into actual hardware sprite
+// positions.
 			
 expandMSB:	ldx #$00
 update2spr: lda objPos+1,x
@@ -221,9 +369,10 @@ update2spr: lda objPos+1,x
 			bne update2spr
 			rts
 
-// Animate the waterfall by scrolling 
-// the waterfall characters downwards 
-// slownly.
+//---------------------------------------------------------- 
+
+
+// Animate the waterfall by scrolling  the waterfall chars downwards 
 
 animateWater:
 			lda gfxAnimDelay
@@ -231,7 +380,9 @@ animateWater:
 			beq gfxAnimMain
 			inc gfxAnimDelay
 			rts 
-			
+
+//---------------------------------------------------------- 
+
 // Animate the sprite data - copy sprite frames 
 // from table and store to sprite pointers 
 
@@ -299,6 +450,7 @@ loopSpriteAnim2:
 				rts
 
 
+//---------------------------------------------------------- 
 			
 			// The main charset graphics animation 
 gfxAnimMain:
@@ -331,14 +483,17 @@ movechrslft:
 			cpx #8
 			bne movechrslft
 			rts
+
+//---------------------------------------------------------- 
 			
 // Main player properties
 playerProperties:
-			jsr shieldStatus
-			jsr playerControl
-			jsr playerBehaviour
-			jsr spriteCharCollision
+			jsr shieldStatus		// Player's shield on/off
+			jsr playerControl		// Player control mechanics
+			jsr playerBehaviour		// Player jumping or falling?
+			jsr spriteCharCollision // Player to lettuce and/or water droplets collision
 			rts
+//---------------------------------------------------------- 
 
 // Test player shield 
 
@@ -365,6 +520,8 @@ noShield:
 			lda #5
 			sta $d027 //This is the player sprite colour
 			rts			
+
+//---------------------------------------------------------- 
 
 // Main player control 
 
@@ -438,6 +595,7 @@ playerBehaviour:
 			
 			jsr jumpCheck 
 			jmp fallCheck 
+//---------------------------------------------------------- 
 
 // Check whether or not the player is 
 // on ground or jumping. If the 
@@ -494,6 +652,7 @@ makeSlugFall:
 			sta slugPosY 
 			
 			rts 
+//---------------------------------------------------------- 
 						
 // Player sprite to char collision			
 spriteCharCollision:
@@ -582,7 +741,8 @@ platformFound:
 			sta playerIsAllowedToPressFire
 skipCollisionLogic:			
 			rts
-	
+//---------------------------------------------------------- 
+
 // Drop all of the water droplets down the screen.
 
 waterDroplets:
@@ -699,17 +859,17 @@ randomize:	lda dropRand
 			ldx newpos	// Read new table position for water droplet.
 			lda randPosTable,x
 			rts
+//---------------------------------------------------------- 
 
-// Game sprite to sprite collision. This can be based
-// in two forms. 
+/* Game sprite to sprite collision. This can be based
+   in two forms. 
 
-// 1. The slug gets the lettuce
-// 2. The salty water kills the slug
+   1. The slug gets the lettuce
+   2. The salty water kills the slug */
 
 spriteToSpriteCollision:
 
-		//Store box collision co-ordinated from 
-		//player sprite
+		//Store box collision co-ordinated from player sprite
 		
 			lda slugPosX
 			sec
@@ -755,7 +915,7 @@ lettuceEaten:
 			// collision			
 
 //Randomize new lettuce position
-overrange:
+randomLettucePos:
 	  		lda lettuceRand
 			sta lettuceRandTemp 
 			lda lettuceRand
@@ -776,8 +936,8 @@ overrange:
 			adc #$36
 			sta lettuceRand+1
 			sta newpos2
-			cmp #12				//Total number of values for lettuce new X, Y position
-			bcs overrange		//if range > 12 then loop random check until matching value has been found.
+			cmp #12				 //Total number of values for lettuce new X, Y position
+			bcs randomLettucePos //if range > 12 then loop random check until matching value has been found.
 
 			ldx newpos2			//Read table of bytes and store new X,Y position for lettuce
 
@@ -789,8 +949,9 @@ overrange:
 		 							
 noLettuceEaten:						
 			rts			
+//---------------------------------------------------------- 
 						
-// Score 200 points 
+// Score 500 points 
 
 score500:	ldy #4
 scoreLoop0:
@@ -811,6 +972,8 @@ scoreNotOver:
 			dex
 			bne scoreLoop			
 			jmp updatePanel 
+
+//---------------------------------------------------------- 
 
 //Update score panel to display score and hi score 
 //values to screen score, hi score and time 
@@ -836,6 +999,7 @@ putScore:	lda score,x
 			sta livesTextPos
 			rts
 
+//---------------------------------------------------------- 
 
 // Collision check: Slug vs Droplets. 					
 
@@ -882,7 +1046,7 @@ slugHit:	lda lives
 			// shield pointer, and timer and deduct one
 			// life from the counter
 
-			lda #200
+			lda #shieldDuration
 			sta slugShieldTime
 			lda #0
 			sta shieldPointer
@@ -893,130 +1057,225 @@ slugHit:	lda lives
 		// to zero, update the panel and destroy the slugh
 
 lastLifeLost:
-			inc $d020
-			jmp *-3					
+			
+			lda #7
+			sta $d027 
+			lda #0
+			sta explodeAnimDelay
+			sta explodeAnimPointer		
+
+		// Similar loop to the main game, but only exclusive
+		// to the player death sequence.
+exploder:
+			jsr syncRaster	
+			jsr waterDroplets 	
+			jsr doExplosion 
+			jmp exploder
+
+		// Main slug explosion routine.
+
+doExplosion:
+			lda explodeAnimDelay
+			cmp #3 
+			beq doExplosion2
+			inc explodeAnimDelay
+			rts
+doExplosion2:
+			lda #0
+			sta explodeAnimDelay
+			ldx explodeAnimPointer
+			lda explodeFrame,x 
+			sta $07f8
+			inx 
+			cpx #explodeEnd-explodeFrame
+			beq gameOver
+			inc explodeAnimPointer
+			rts
+//---------------------------------------------------------- 
+
+// The game is over. Remove all existing sprites
+// then setup the Game Over sprites.
+
+gameOver:	ldx #$00
+clearSprScr: 
+			lda #$00
+			sta objPos,x 
+			sta $d000,x 
+			inx 
+			cpx #16 // x, y ...
+			bne clearSprScr
 
 
-			rts					
-									
+			// Game over text sprites
+			lda letter_g
+			sta $07f8
+			lda letter_a 
+			sta $07f9
+			lda letter_m 
+			sta $07fa
+			lda letter_e
+			sta $07fb 
 
-// Game pointers 			
-rp:			.byte 0 //Raster pointer to sync with IRQ
-newpos:     .byte 0	
-newpos2:	.byte 0	
-pointers:
+			lda letter_o
+			sta $07fc
+			lda letter_v
+			sta $07fd
+			lda letter_e
+			sta $07fe
+			lda letter_r
+			sta $07ff
 
-// GFX animation pointer 
+gameOverMain:
+			// Short delay ...
 
-gfxAnimDelay: .byte 0
+			ldx #$00
+waste1:		ldy #$00
+waste2:		iny 
+			bne waste2
+			inx
+			bne waste1			
 
-// Sprite animation pointers
-spriteAnimDelay: .byte 0
-spriteAnimPointer: .byte 0
-spriteAnimPointer2: .byte 0
-spriteAnimPointer3: .byte 0
+			// Force all sprite changable multicolour green
 
-// Sprite collision pointers 
-spriteColliderLeft: .byte 0
-spriteColliderRight: .byte 0
-spriteColliderTop: .byte 0
-spriteColliderBottom: .byte 0
+			ldx #$00
+forceGreen:	lda #$0d
+			sta $d027,x 
+			inx 
+			cpx #$08 
+			bne forceGreen 
 
-// Player properties:
+			// Manually setup position for Game Over sprites
 
-playerIsJumping: .byte 0
-playerIsFalling: .byte 0
-playerIsAllowedToPressFire: .byte 0
-playerJumpPointer: .byte 0
+			ldx #$00
+posGameOver:
+			lda gameOverPos,x
+			sta objPos,x 
+			inx 
+			cpx #16
+			bne posGameOver
+			lda #0
+			sta fireButton
+			
+			// Now detect whether the player's score is 
+			// officially a hi score.
 
-fireButton:		.byte 0
+			lda score
+			sec 
+			lda hiscore+5
+			sbc score+5
+			lda hiscore+4
+			sbc score+4
+			lda hiscore+3
+			sbc score+3
+			lda hiscore+2
+			sbc score+2
+			lda hiscore+1
+			sbc score+1
+			lda hiscore 
+			sbc score 
+			bcs notAHiScore
 
-pointersend:		
+			// Hi score achieved
+hiScoreAchieved:
+			ldx #$00
+makeNewHi:	lda score,x 
+			sta hiscore,x 
+			inx 
+			cpx #6 
+			bne makeNewHi
+			
+notAHiScore:			
+			jsr updatePanel
 
-slugRightSprite: .byte $80
-slugLeftSprite: .byte $82
-lettuceSprite: .byte $84
+			// Keep sprites expanded and also 
+			// wait for fire button for title
+			// screen.
 
-dropRandTemp: .byte $5a
-dropRand: .byte %10011101,%01011011
-dropletSpeed: .byte $00,$01,$00,$02,$00,$03,$00,$01,$00,$03,$00,$02
+gameOverLoop:
+			lda #0
+			sta rp
+			cmp rp
+			beq *-3
+			jsr expandMSB
+			
+			lda $dc00
+			lsr
+			lsr
+			lsr
+			lsr
+			lsr
+			bit fireButton
+			ror fireButton
+			bmi gameOverLoop
+			bvc gameOverLoop
+			jmp titleCode
 
-lettuceRandTemp: .byte $5a
-lettuceRand: .byte %10011101,%0101011
+//----------------------------------------------------------
+playTime:	lda clockDelay
+			cmp #$30
+			beq switchCounter
+			inc clockDelay
+			rts
+switchCounter:
+			lda #0
+			sta clockDelay 
+			
+			dec time+2
+			lda time+2
+			cmp #$2f
+			bne clockOk
+			lda #$39
+			sta time+2
+			dec time+1
+			lda time+1
+			cmp #$2f
+			bne clockOk
+			lda #$39 
+			sta time+2
+			lda #$35
+			sta time+1
+			dec time
+			lda time 
+			cmp #$2f
+			bne clockOk
+			lda #$30
+			sta time
+			sta time+1
+			sta time+2
+			
+			jsr updatePanel
+			jmp wellDone
+clockOk:	jsr updatePanel
+			rts		
 
-// Lettuce X and Y location tables
+//----------------------------------------------------------
+//
+// Time has run out. The slug has survived
 
-lettuceXTable: .byte $56,$36,$7a,$12,$9c,$32,$7c,$56,$26,$7e,$0c,$a2
-lettuceYTable: .byte $40,$58,$58,$6a,$6a,$7e,$7e,$98,$b0,$b0,$c8,$c8
+wellDone:
+			ldx #$00
+clearSPR:	lda #$00
+			sta $d000,x 
+			inx 
+			cpx #$10
+			bne clearSPR
+			lda letter_w
+			sta $07f8
+			lda letter_e 
+			sta $07f9 
+			lda letter_l
+			sta $07fa 
+			lda letter_l
+			sta $07fb
+			lda letter_d
+			sta $07fc
+			lda letter_o 
+			sta $07fd
+			lda letter_n
+			sta $07fe
+			lda letter_e
+			sta $07ff
+			jmp gameOverMain
 
-playJumpTable:
-			 
-		        //SP0 SP1 SP2 SP3
-			    //X,Y,X,Y,X,Y,X,Y
-objPos:		.byte 0,0,0,0,0,0,0,0 //objPos = sprite position 
-                //SP4 SP5 SP6 SP7
-				//X,Y,X,Y,X,Y,X,Y
-			.byte 0,0,0,0,0,0,0,0 
-
-
-// Sprite starting position table (All 
-// sprites are offset except for the 
-// slug.
-
-startPos:		.byte $56,$c4
-				.byte $0c,$00
-				.byte 0,0
-				.byte 0,20
-				
-				.byte 0,40
-				.byte 0,60
-				.byte 0,80
-				.byte 0,100
-
-// Game sprite animation and colour 
-// pointers 
-
-defaultFrames:	.byte $80,$84,$85,$87
-				.byte $89,$88,$86,$89
-
-defaultColour:	.byte $05,$0d,$0e,$0e
-				.byte $0e,$0e,$0e,$0e
-
-
-// Selection position table, (for random usage 16 bytes)
-
-randPosTable:	.byte 012,024,036,048,056,060
-				.byte 072,084,096,120,132,144
-				.byte 156,160,012,024
-
-// Game sprite animation tables
-
-slugRightFrame: .byte $80,$81
-slugLeftFrame:  .byte $82,$83
-lettuceFrame:   .byte $84,$84
-dropletFrame1:  .byte $85,$86,$87,$88,$89
-dropletFrame2:  .byte $87,$88,$89,$85,$86
-dropletFrame3:	.byte $89,$85,$86,$87,$88
-dropletFrame4:  .byte $88,$89,$85,$86,$87
-dropletFrame5:  .byte $86,$87,$88,$89,$85
-dropletFrame6:	.byte $89,$85,$86,$87,$88
-explodeFrame:	.byte $8a,$8b,$8c,$8d,$8e,$8f,$90,$91
-collectFrame:   .byte $92,$93,$94,$95,$96,$97
-
-// Player jump table 
-
-jumpTable:		.byte $fd,$fc,$fb,$fb,$fb,$fb,$fb,$fb,$fb
-jumpTableEnd:				
-
-// Score pointers
-
-score:			.byte $30,$30,$30,$30,$30,$30
-hiscore:		.byte $30,$30,$30,$30,$30,$30 
-time:			.byte $30,$30,$30
-lives:			.byte $30
-
-// Shield pointers 
-
-slugShieldTime:		.byte $00
-shieldPointer: 		.byte $00
-shieldColourTable:  .byte $05,$03,$0d,$01,$0d,$03,$05
+//---------------------------------------------------------- 
+.import source "gamepointers.asm"
