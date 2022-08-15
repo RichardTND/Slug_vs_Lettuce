@@ -15,13 +15,14 @@
 
 .label titleMusic = $00     // Title music is track #0
 .label gameMusic = $01      // In game music is track #1
-.label getReadyJingle = $02 // Get ready jingle is track #2
+.label wellDoneJingle = $02 // Well done jingle is track #4
+.label getReadyJingle = $04 // Get ready jingle is track #2
 .label gameOverJingle = $03 // Game over jingle is track #3
-.label wellDoneJingle = $04 // Well done jingle is track #4
 
-.label musicInit = music	// Music initialise address
-.label musicPlay = music+3	// Music play address
-.label sfxInit = music+6    // Goat tracker SFX implemented in project
+
+.label musicInit = music	// Music initialise address ($6000)
+.label musicPlay = music+3	// Music play address       ($6003)
+.label sfxInit = music+6    // Goat tracker SFX implemented in project ($6006)
 
 //Collision char (Referred to charpad, the char value that represents)
 //the platform in which the Slug should land on
@@ -38,12 +39,13 @@
 .label dropletPosX = objPos+4  //objPos+4 to 15 are sprites 2-7
 .label dropletPosY = objPos+5  //which are salty water droplets
 
-.label slugPosXHW = $d000
+.label slugPosXHW = $d000       // Hardware sprite positions for sprite 0 (The slug)
 .label slugPosYHW = $d001
 .label slugPosXMSBHW = $d010 
 
 .label platformCharValue = 65 //Charset ID to prevent the slug from jumping
-.label waterFallChar1 = 70
+
+.label waterFallChar1 = 70  // Charset ID for background animations
 .label waterFallChar2 = 71
 .label waterFallChar3 = 72
 
@@ -52,7 +54,8 @@
 .label collZP = $02
 .label bottomGroundPosition = $c4 // The most bottom ground position in which the player can fall to
 
-// Box collider sizes for sprites
+// Box collider boundary sizes for sprites
+
 .label spriteBoxLeft = 6
 .label spriteBoxRight = 12
 .label spriteBoxTop = 12
@@ -69,5 +72,7 @@
 .label timeTextPos2 = $07db
 .label timeTextPos3 = $07dc
 .label hiScoreTextPos = $07e2
+
+// Time of shield before lives are lost
 
 .label shieldDuration = 255

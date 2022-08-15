@@ -4,8 +4,43 @@
 //(C)2022 Scene World - Issue 32
 //--------------------------------
 
-// Title screen code
+//Some one time code (After running main program at $1000)
 
+oneTime:       
+               lda #251    // Disable RUN/STOP and RESTORE
+               sta $0328   // throughout
+
+/* One time PAL/NTSC checker routine. This
+   is used to check the raster position of 
+   the default screen. */
+
+               lda $d012         //Raster line on C64 machine
+               cmp $d012 
+               beq *-3
+               bmi oneTime
+               cmp #$22          // If rasterline is below then C64 is NTSC
+               bcc ntscDetected
+
+               // System PAL has been detected
+
+palDetected:   lda #1            // Otherwise it is just PAL
+               sta system
+               lda #$30          // Set delay value of clock
+               sta timeExpiry
+
+               jmp titleCode     // Start main title screen
+
+
+               // System NTSC has been detected
+
+ntscDetected:  lda #0
+               sta system
+               lda #$40          // Set delay of clock to higher rate as NTSC is much faster
+               sta timeExpiry
+
+//---------------------------------------------------------
+              
+// Title screen code
 // Switch off all IRQ raster interrupts, sprites, etc. 
 
 titleCode:
@@ -23,8 +58,10 @@ titleCode:
                 sta $d015
                 sta $d020
                 sta $d021
+                sta flashDelay 
+                sta flashPointer
 
- // Silence SID chip once again
+// Silence SID chip once again
 
                 ldx #$00
 silentSidTitle: lda #$00
@@ -33,18 +70,18 @@ silentSidTitle: lda #$00
                 cpx #$18 
                 bne silentSidTitle               
 
- // Setup title screen graphics 
+// Setup title screen graphics 
 
-                lda #$1c
+                lda #$1c   // Game+Title charset at $3800
                 sta $d018               
-                lda #$18
-                sta $d016
-                lda #$09
+                lda #$09   // Setup background multicolour brown
                 sta $d022
-                lda #$01
+                lda #$01   // Setup background multicolour white
                 sta $d023
 
-                ldx #$00
+// Clear the screen once
+
+                ldx #$00   
 titleClear:     lda #$20
                 sta $0400,x
                 sta $0500,x
@@ -53,7 +90,9 @@ titleClear:     lda #$20
                 inx
                 bne titleClear
 
- // Draw the title screen logo data
+/* Draw the title screen logo data by reading the logo
+   matrix and placing it onto the default screen RAM
+   (at )$0400-$07e8) */
 
                 ldx #$00
 drawLogo:       lda logoMatrix,x 
@@ -74,6 +113,8 @@ drawLogo:       lda logoMatrix,x
                 cpx #40 
                 bne drawLogo
 
+// Draw second segment of logo 
+
                 ldx #$00
 drawLogo2:      lda logoMatrix+(7*40),x
                 sta $0400+(9*40),x
@@ -87,7 +128,7 @@ drawLogo2:      lda logoMatrix+(7*40),x
                 cpx #40 
                 bne drawLogo2
 
-                // Updated score and hi score 
+                // Updated score and hi scores 
 
                 ldx #$00
 updaateScoreData:
@@ -98,6 +139,7 @@ updaateScoreData:
                 inx
                 cpx #6
                 bne updaateScoreData
+
 
                 // Now put scoreline at top row and credits text
 
@@ -118,7 +160,7 @@ copyScoreLine:  lda scoreLine,x
                 cpx #$28
                 bne copyScoreLine
 
-                // Grab the game's attributes table and place to screen colour RAM
+                // Grab the game's colour attributes table and place to screen colour RAM
 
                 ldx #$00
 fetchAttribsT:  ldy $0400,x 
@@ -136,8 +178,24 @@ fetchAttribsT:  ldy $0400,x
                 inx
                 bne fetchAttribsT
 
+        
+                // Paint the scroll text colour 
 
-                // Waste some time
+                ldx #$00
+putScrollColour:
+                lda #$03
+                sta $d800,x
+                lda scrollColour,x 
+                sta $dbc0,x 
+                inx 
+                cpx #40 
+                bne putScrollColour
+
+                /* Waste some time for a short delay. (In order)
+                   to reduce sensitivity with the fire button 
+                   everytime a game has been completed or lost 
+                */
+
                 ldx #$00
 tDelay1:        ldy #$00
 tDelay2:        iny
@@ -145,17 +203,19 @@ tDelay2:        iny
                 inx
                 bne tDelay1
 
-                // Reset firebutton 
+                // Reset firebutton pointer
 
                 lda #0 
                 sta fireButton 
 
-                // Reset scrolltext 
+                // Reset scrolltext message
 
                 lda #<scrollText
                 sta messRead+1
                 lda #>scrollText
                 sta messRead+2
+
+//-------------------------------------------------------------
 
 // Setup IRQ raster interrupts 
 
@@ -171,12 +231,14 @@ tDelay2:        iny
                 sta $d011
                 lda #$01
                 sta $d01a
-                lda #0
+                lda #titleMusic
                 jsr musicInit
                 cli 
                 jmp titleLoop
 
 // Main IRQ interrupts
+
+                // Setup smooth scrolling hardware scroll at bottom raster position
 
 tIRQ1:          inc $d019
                 lda $dc0d
@@ -191,14 +253,17 @@ tIRQ1:          inc $d019
                 sty $0315
                 jmp $ea7e
 
+                // Set static multicolour screen in top raster value
 tIRQ2:          inc $d019 
                 lda #$f0
                 sta $d012 
                 lda #$18
                 sta $d016
-                lda #1
+                lda #1           // Control raster position 
                 sta rp 
-                jsr musicPlay
+                jsr musicPlayer  // Call PAL/NTSC music speed player in gamecode.asm
+                                 // since all tunes and jingles are shared in the same
+                                 // music file.
                 ldx #<tIRQ1                 
                 ldy #>tIRQ1
                 stx $0314
@@ -207,12 +272,18 @@ tIRQ2:          inc $d019
 
 //----------------------------------------------------
 
+/* The main loop for the title screen. First check 
+   the raster position and then run the scroll text,
+   flash the press fire text, also wait for the fire
+   button to be pressed before starting a new game */
+
 titleLoop:      lda #0
                 sta rp
                 cmp rp
                 beq *-3
 
                 jsr scrollRoutine
+                jsr flashRoutine
                 lda $dc00
                 lsr
                 lsr
@@ -227,20 +298,27 @@ titleLoop:      lda #0
 
 // ----------------------------------------------------
 
+// Title screen scroll text routine
+
 scrollRoutine:
-                lda xpos
-                sec
-                sbc #1 
-                and #7
-                sta xpos
+                lda xpos   // Our scroll pointer
+                sec        // pull pointer back
+                sbc #2     // max speed of scroll
+                and #7     // single colour 
+                sta xpos   
                 bcs exitScroll
+
+                // Shift scrolling message text back one space (Max, 40 characters)
 
                 ldx #$00
 moveText:       lda $07c1,x
                 sta $07c0,x
                 inx
-                cpx #$27
+                cpx #$28
                 bne moveText 
+
+               // Scroll text message control. Checks which byte has to be read 
+               // and if @ is found then reset the scroll text.
 
 messRead:       lda scrollText 
                 bne storeChar
@@ -250,42 +328,114 @@ messRead:       lda scrollText
                 sta messRead+2
                 jmp messRead
 
+               // ... otherwise place the character of the message in the last column
+
 storeChar:      sta $07e7
+
+               // ... read next character of scroll text message 
 
                 inc messRead+1
                 bne exitScroll
                 inc messRead+2
 exitScroll:     rts
 
+// ----------------------------------------------------
 
-// Presentation lines
+// Flash routine for PRESS FIRE TO START  
 
-xpos:           .byte 0
+               // Control speed of flashing
+
+flashRoutine:   lda flashDelay
+                cmp #3
+                beq flashOk
+                inc flashDelay
+                rts
+
+               // Main flashing routine
+
+flashOk:        lda #0
+                sta flashDelay
+                ldx flashPointer    // Read pointer position
+                lda flashColour,x   // Read colour table
+                sta flashStore      // Place into store pointer
+                inx                 // move to next byte on table
+                cpx #10             // 10 bytes read?
+                beq resetFlasher    // reset the flash pointer to 0
+                inc flashPointer
+                jmp paintFirePrompt      
+
+                // Reset flash pointer
+
+resetFlasher:   ldx #0
+                stx flashPointer
+
+                // Read pointer flashStore and place it over the
+                // PRESS FIRE TO PLAY text.
+paintFirePrompt:
+                ldy #$00
+paintFireLoop:
+                lda flashStore 
+                sta $db48,y 
+                iny 
+                cpy #40
+                bne paintFireLoop
+                rts
+
+// Title screen pointers
+
+xpos:           .byte 0 // Smooth/hard scroll controller
+flashDelay:     .byte 0 // Flashing speed pointer
+flashPointer:   .byte 0 // Flashing colour pointer
+flashStore:     .byte 0 // Colour storage from table
+
+// Self=modified score/hi score text and static presentation lines
 
 scoreLine:  
               .text "last score: "
 lastScore:    .text "000000     hi score: "
 newHiScore:      .text "000000"
 
-line1:         .text "          (c)2022 scene world          "
-line2:         .text " code, graphics and sound and music by "
-line3:         .text "            richard bayliss            "
-line4:         .text "        use joystick in port 2         "
-line5:         .text "        - press fire to play -         "
+               // Main presentation lines
 
-// Title screen scroll text
+line1:         .text "         £ scene world magazine         "
+line2:         .text " code, graphics and sound and music by  "
+line3:         .text "             richard bayliss            "
+line4:         .text "      plug a joystick into port 2       "
+line5:         .text "         - press fire to play -         "
 
-scrollText: .text "   ... slug vs lettuce ...   (c) 2022 scene world magazine ...    brought to you by "
-            .text "people of liberty and the new dimension ...   programming, graphics, sound and music were "
-            .text "all done by richard bayliss ...   plug a joystick into port 2 ...    how to play: "
-            .text "this is a fun little game involving a slug, lettuce, platforms and salty water "
-            .text "...   the aim of this game is to help feed the slug lettuce, which will appear "
-            .text "at random onto one of the platforms or the ground surface of the cave ...   by eating "
-            .text "the lettuce, you will score 500 points ...   left and right moves your slug and "
-            .text "pressing fire will allow the slug to jump "
-            .text "from one platform to another only when reachable ...   watch out for the salt water droplets, which "
-            .text "are leaking inside the cave ...   if you get hit by one of those, you will lose a life ...   "
-            .text "as soon as all of your lives are gone, the game is over ...   try to survive for about ten "
-            .text "minutes to win the game, but keep on scoring those precious points while you can ...   "
-            .text "have loads of fun ...    bye for now !!!                                             "
+// Title screen scroll text colour 
+
+scrollColour:   .byte $09,$08,$0a,$07,$01   // Scroll text colour = 40 chars
+                .byte $01,$01,$01,$01,$01
+                .byte $01,$01,$01,$01,$01
+                .byte $01,$01,$01,$01,$01
+                .byte $01,$01,$01,$01,$01
+                .byte $01,$01,$01,$01,$01
+                .byte $01,$01,$01,$01,$01
+                .byte $07,$0a,$08,$09,$09
+
+                // PRESS FIRE flash colour table
+
+flashColour:    .byte $02,$04,$03,$07,$01
+                .byte $07,$03,$04,$02,$00
+
+               // Main title screen scroll text
+
+scrollText: .text "   ... slug vs lettuce ...   yet another fast and fun little game production for your c64 ...    this game was designed, programmed and developed by richard bayliss ...   £ 2022 "
+            .text "scene world magazine ...   written as part of the game programming tutorial "
+            .byte $22
+            .text "let's make a c64 game"
+            .byte $22
+            .text " ...   please read scene world issue 32 to find out more about it ...   "
+            .text "how to play: this is a simple little single screen platform hi score challenge ...   this game "
+            .text "requires a joystick in port 2 ...    guide your speedy slug around the cave and eat the lettuce that appears on "
+            .text "screen ...   you can use left/right to move your slug its directions, also use the fire button to make it jump ...   "
+            .text "watch out for the deadly water droplets ...   if they hit your slug, you will lose a life ...    when your slug "
+            .text "is flashing, you are protected for a bit ...   you will gain an extra life for every minute of survival (unless you still have 9 lives) ...   "
+            .text "if the time runs out, you have won the game ...    the game is lost if you lose all of your lives ...    "
+            .text "the graphics were designed using charpad v2.7.6, and the sprites were made using sprite pad v2.0 ...   music was "
+            .text "made using goat tracker ultra v1.2.0 ...   the rest was compiled and put together in kickassembler (via visual studio code), exomizer v3.1.1 and "
+            .text "vice ...    i do hope you have loads of fun playing this game production, and i shall see you some other time "
+            .text "with yet another new c64 game production, but it could be a long while yet ...    press fire to play ...      "
+            .text "                                              "
             .byte 0

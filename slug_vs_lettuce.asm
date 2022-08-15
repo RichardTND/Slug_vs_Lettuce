@@ -4,20 +4,17 @@
 //(C)2022 Scene World - Issue 32
 //--------------------------------
 
-// Import labels and pointers 
+		// Import labels and pointers - we need those linked to this source
+		.import source "labels.asm"
 
-.import source "labels.asm"
-
-// Setup the BASIC run SYS jump address.
-BasicUpstart2(mainCode)
-
-		// Import the Goat Tracker game soundtracks
-		// (The music has two main tunes and two jingles)
+		// Setup the BASIC run SYS jump address.
+		BasicUpstart2(mainCode)
 		
-		*=$1000 "MUSIC"
-music:		
-		.import c64 "c64/music.prg"
-		
+		//Title screen code 
+		*=$1000 "TITLE SCREEN CODE"
+mainCode:	
+		.import source "titlescreen.asm"
+
 		//Game sprites 
 		*=$2000 "SPRITES"
 		.import c64 "c64/sprites.prg"
@@ -42,12 +39,16 @@ gameAttribs:
 gameCode:		
 		.import source "gamecode.asm"
 		
-		//Title screen code 
-		*=$5000 "TITLE SCREEN CODE"
-mainCode:	
-		.import source "titlescreen.asm"
+		// Game music and jingles
+		*=$6000 "MUSIC"
+music:
+		.import c64 "c64/music.prg"
 
-		*=$7000 "TITLE SCREEN LOGO"
+		// Title screen logo data (made in Charpad, only the logo screen data
+		// because the logo is using the same character set as the title 
+		// screen.
+		
+		*=$8000 "TITLE SCREEN LOGO"
 logoMatrix:
 		.import binary "c64/logo.bin"
 

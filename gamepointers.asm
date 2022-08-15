@@ -4,6 +4,10 @@
 rp:			.byte 0 //Raster pointer to sync with IRQ
 newpos:     .byte 0	
 newpos2:	.byte 0	
+system:		.byte 0 
+ntscTimer:  .byte 0
+fireTimer:  .byte 0
+timeExpiry: .byte $30
 pointers:
 
 // GFX animation pointer 
@@ -35,24 +39,27 @@ fireButton:		.byte 0
 
 pointersend:		
 
+// Slug direction and lettuce animations (stored to sprites)
+
 slugRightSprite: .byte $80
 slugLeftSprite: .byte $82
 lettuceSprite: .byte $84
 
+// Water droplets pointers
+
 dropRandTemp: .byte $5a
 dropRand: .byte %10011101,%01011011
-dropletSpeed: .byte $00,$02,$00,$03,$00,$04,$00,$02,$00,$04,$00,$03
+dropletSpeed: .byte $00,$02,$00,$01,$00,$03,$00,$01,$00,$02,$00,$01
 
 lettuceRandTemp: .byte $5a
 lettuceRand: .byte %10011101,%0101011
+lettuceColour: .byte $05,$0d,$01,$0d,$05
 
 // Lettuce X and Y location tables
 
-lettuceXTable: .byte $56,$36,$7a,$12,$9c,$32,$7c,$56,$26,$7e,$0c,$a2
+lettuceXTable: .byte $56,$38,$7C,$12,$9a,$32,$7c,$56,$2c,$80,$0b,$a1
 lettuceYTable: .byte $40,$58,$58,$6a,$6a,$7e,$7e,$98,$b0,$b0,$c8,$c8
 
-playJumpTable:
-			 
 		        //SP0 SP1 SP2 SP3
 			    //X,Y,X,Y,X,Y,X,Y
 objPos:		.byte 0,0,0,0,0,0,0,0 //objPos = sprite position 
@@ -112,7 +119,7 @@ collectFrame:   .byte $92,$93,$94,$95,$96,$97
 
 // Player jump table 
 
-jumpTable:		.byte $fd,$fc,$fb,$fb,$fb,$fb,$fb,$fb,$fb
+jumpTable:		.byte $fb,$fb,$fc,$fc,$fd,$fd,$fe,$fe,$ff
 jumpTableEnd:				
 
 // Score pointers
@@ -145,16 +152,43 @@ letter_w: .byte $9c
 letter_l: .byte $9d
 letter_n: .byte $9e
 
+// Sprite position table for GET READY
+
 getReadyPos:
 
-				.byte $46,$78,$56,$78
-				.byte $66,$78,$36,$98
-				.byte $46,$98,$56,$98
-				.byte $66,$98,$76,$98
+				.byte $46,$72,$56,$72
+				.byte $66,$72,$36,$92
+				.byte $46,$92,$56,$92
+				.byte $66,$92,$76,$92
 
-gameOverPos:	.byte $3e,$78,$4e,$78
-				.byte $5e,$78,$6e,$78 
-				.byte $3e,$98,$4e,$98
-				.byte $5e,$98,$6e,$98 
+// Sprite position table for GAME OVER and WELL DONE				
 
+gameOverPos:	.byte $3e,$72,$4e,$72
+				.byte $5e,$72,$6e,$72
+				.byte $3e,$92,$4e,$92
+				.byte $5e,$92,$6e,$92
 
+// -------------------------------------------------------
+
+// In game sound effects (Goat Tracker instrument based,then converted using INS2SND)
+
+// Slug jumps 
+slugJumpSFX:  .byte $0F,$AA,$88,$C1,$11,$C2,$C3,$C4,$C5,$C6,$C7,$C8,$C9,$CA,$CB,$CC
+        	  .byte $CD,$00
+
+// Slug eats lettuce
+slugEatSFX:	   .byte $0F,$AA,$88,$C0,$81,$BC,$41,$B4,$81,$BA,$41,$B4,$81,$B8,$41,$B4
+        	   .byte $81,$B4,$41,$B4,$81,$B2,$41,$B4,$81,$B0,$41,$B4,$81,$B0,$41,$B9
+               .byte $81,$00
+
+// Slug is hit by water
+slugHitSFX:		.byte $0F,$AA,$88,$B0,$41,$B1,$B2,$B3,$B4,$00
+
+// Slug is dead
+slugDeadSFX:	.byte $0F,$FA,$08,$C4,$81,$A8,$41,$C0,$81,$BE,$BC,$80,$BA,$B8,$B6,$B4
+        		.byte $B2,$B0,$AE,$AC,$AA,$A8,$A6,$A4,$A2,$A0,$9E,$9C,$9A,$98,$96,$94
+        		.byte $92,$90,$00
+
+// Slug gets extra live
+extraLifeSFX: 	.byte $0E,$EE,$08,$B0,$41,$B0,$B4,$B4,$B7,$B7,$BC,$BC,$C0,$C0,$BC,$BC
+         		.byte $B7,$B7,$B4,$B4,$B0,$B0,$A0,$10,$00

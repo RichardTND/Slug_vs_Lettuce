@@ -9,7 +9,16 @@
 gamecode:	
 
 			sei
-			 
+			ldx #$00
+screenClearGame:
+			lda #$20
+			sta $0400,x 
+			sta $0500,x 
+			sta $0600,x 
+			sta $06e8,x						 
+			inx 
+			bne screenClearGame
+			
 			/* Clear out all of the interrupts and SID and 
 		     do a short delay cycle routine */
 
@@ -32,6 +41,12 @@ gamecode:
 			lda #$00
 			sta $d020
 			sta $d021
+			sta fireTimer
+
+			// Reset scroll position
+
+			lda #7 
+			sta xpos
 
 			// Clear out the SID chip
 
@@ -41,14 +56,7 @@ noTitleSid:	lda #$00
 			inx 
 			cpx #$18
 			bne noTitleSid 
-			
-			ldx #$00
-stopsnd:	lda #$00
-			sta $d400,x
-			inx 
-			cpx #$18 //(SID: $D400-$D418)
-			bne stopsnd 
-			
+	
 //---------------------------------------------------------- 
 
 /* Draw out the main game screen. This game screen
@@ -187,7 +195,7 @@ gdelay2:	iny
 			sta $d011
 			lda #$01
 			sta $d01a 
-			lda #$00
+			lda #getReadyJingle
 			jsr musicInit
 			cli
 
@@ -209,7 +217,7 @@ putGetReadyPos:
 
 			ldx #$00
 makeGreen1:
-			lda #$0d
+			lda #$05
 			sta $d027,x 
 			inx 
 			cpx #8
@@ -251,6 +259,7 @@ getReadyLoop:
 			cmp rp
 			beq *-3
 			jsr expandMSB
+			jsr animateWater
 			lda $dc00
 			lsr 
 			lsr 
@@ -266,7 +275,7 @@ getReadyLoop:
 
 // Setup and reposition main game sprites 			
 
-			lda #$0d
+			lda #$05
 			sta $d028
 			lda #0
 			sta shieldPointer
@@ -306,7 +315,8 @@ setdfltsprs:
 
 			lda #0
 			sta fireButton
-
+			lda #gameMusic
+			jsr musicInit
 			jmp gameLoop
 
 //---------------------------------------------------------- 
@@ -319,11 +329,26 @@ gameIRQ:	asl $d019
 			sta $dd0d
 			lda #$fa // Pos. of bottom
 			sta $d012 //raster
-			jsr musicPlay
+			jsr musicPlayer
 			lda #1
 			sta rp //Raster pointer
 			jmp $ea7e
 	
+musicPlayer:
+			lda system
+			bne pal
+			inc ntscTimer
+			lda ntscTimer
+			cmp #6 
+			beq resetSpeed
+pal:		jsr musicPlay
+			rts 
+resetSpeed:
+			lda #0 
+			sta ntscTimer			
+			rts
+
+
 //---------------------------------------------------------- 
 
 // The main game loop subroutine
@@ -334,7 +359,7 @@ gameLoop:	jsr syncRaster
 			jsr playerProperties
 			jsr waterDroplets
 			jsr spriteToSpriteCollision
-			jsr playTime
+			jsr playTime		
 			jmp gameLoop
 
 //---------------------------------------------------------- 
@@ -376,13 +401,47 @@ update2spr: lda objPos+1,x
 
 animateWater:
 			lda gfxAnimDelay
-			cmp #4
+			cmp #2
 			beq gfxAnimMain
 			inc gfxAnimDelay
 			rts 
 
 //---------------------------------------------------------- 
+//---------------------------------------------------------- 
+			
+			// The main charset graphics animation 
+gfxAnimMain:
+			lda #0
+			sta gfxAnimDelay
+			
+			lda charMem+(waterFallChar1*8)+7	
+			sta $02 
+			lda charMem+(waterFallChar2*8)+7
+			sta $03
+			ldx #6
+movechrsup:	lda charMem+(waterFallChar1*8),x
+			sta charMem+(waterFallChar1*8)+1,x
+			lda charMem+(waterFallChar2*8),x
+			sta charMem+(waterFallChar2*8)+1,x
+			dex 
+			bpl movechrsup 
+			lda $03 
+			sta charMem+(waterFallChar2*8)
+			lda $02 
+			sta charMem+(waterFallChar1*8)
+			ldx #$00
+movechrslft:
+			lda charMem+(waterFallChar3*8),x 
+			asl 
+			rol charMem+(waterFallChar3*8),x
+			asl 
+			rol charMem+(waterFallChar3*8),x 
+			inx 
+			cpx #8
+			bne movechrslft
+			rts
 
+//--------------------------------------------------------
 // Animate the sprite data - copy sprite frames 
 // from table and store to sprite pointers 
 
@@ -439,6 +498,8 @@ animateDroplets:
 				sta $07fe
 				lda dropletFrame6,x 
 				sta $07ff
+				lda lettuceColour,x 
+				sta $d028
 				inx 
 				cpx #5 
 				beq loopSpriteAnim2
@@ -450,39 +511,6 @@ loopSpriteAnim2:
 				rts
 
 
-//---------------------------------------------------------- 
-			
-			// The main charset graphics animation 
-gfxAnimMain:
-			lda #0
-			sta gfxAnimDelay
-			
-			lda charMem+(waterFallChar1*8)+7	
-			pha 
-			lda charMem+(waterFallChar2*8)+7
-			pha 
-			ldx #7
-movechrsup:	lda charMem+(waterFallChar1*8),x
-			sta charMem+(waterFallChar1*8)+1,x
-			lda charMem+(waterFallChar2*8),x
-			sta charMem+(waterFallChar2*8)+1,x
-			dex 
-			bpl movechrsup 
-			pla 
-			sta charMem+(waterFallChar1*8)
-			pla 
-			sta charMem+(waterFallChar2*8)
-			ldx #$00
-movechrslft:
-			lda charMem+(waterFallChar3*8),x 
-			asl 
-			rol charMem+(waterFallChar3*8),x
-			asl 
-			rol charMem+(waterFallChar3*8),x 
-			inx 
-			cpx #8
-			bne movechrslft
-			rts
 
 //---------------------------------------------------------- 
 			
@@ -540,7 +568,7 @@ playerControl:
 
 			lda slugPosX
 			sec
-			sbc #1
+			sbc #2
 			cmp #$0c
 			bcs updateLeft
 			lda #$0c
@@ -559,13 +587,13 @@ checkRight:
 
 			lda slugPosX
 			clc
-			adc #1
+			adc #2
 			cmp #$a0			
 			bcc updateRight
 			lda #$a0 
 updateRight:
 			sta slugPosX
-			
+			 
 checkFire:	lda $dc00 
 			lsr
 			lsr 
@@ -576,18 +604,32 @@ checkFire:	lda $dc00
 			ror fireButton
 			bmi noJoyControl
 			bvc noJoyControl
+			
+			
+			 
+fireReady:
 			lda #0
 			sta fireButton
+			lda playerIsFalling 
+			cmp #1
+			beq noJoyControl
 			lda playerIsAllowedToPressFire
-			beq noJoyControl 
-						 
+			cmp #1
+			bne noJoyControl
+
 			ldx #0
 			stx playerJumpPointer
+
 			lda #0 
 			sta playerIsFalling
 			sta playerIsAllowedToPressFire
+
 			lda #1
 			sta playerIsJumping
+
+			// Play SFX for slug jumping
+			jsr playSlugJumpSFX
+			 
 noJoyControl:
 			rts 
 			
@@ -650,7 +692,7 @@ makeSlugFall:
 			clc 
 			adc #4
 			sta slugPosY 
-			
+			 
 			rts 
 //---------------------------------------------------------- 
 						
@@ -659,6 +701,7 @@ spriteCharCollision:
 			lda playerIsJumping
 			cmp #1
 			beq skipCollisionLogic
+
 			lda slugPosXHW			// Read sprite0 X pos for slug
 			sec 
 			sbc #collisionWidth		// Read collision X position
@@ -731,15 +774,17 @@ dontFall:
 platformFound:
 		 
 			lda playerIsJumping
-			cmp #1
-			beq skipCollisionLogic
+			bne skipCollisionLogic
 			lda #0
 			sta playerIsFalling
 			sta playerIsJumping 
 			
 			lda #1
 			sta playerIsAllowedToPressFire
+			rts
 skipCollisionLogic:			
+			lda #0
+			sta playerIsAllowedToPressFire
 			rts
 //---------------------------------------------------------- 
 
@@ -772,7 +817,19 @@ testDroplet1Out:
 			lda dropletPosY
 			cmp #$ca 
 			bcc droplet1OK
+samePos1:			
 			jsr randomize
+			cmp dropletPosX+2
+			beq samePos1
+			cmp dropletPosX+4
+			beq samePos1
+			cmp dropletPosX+6
+			beq samePos1
+			cmp dropletPosX+8
+			beq samePos1
+			cmp dropletPosX+10
+			beq samePos1
+
 			sta dropletPosX
 			lda #0
 			sta dropletPosY
@@ -783,7 +840,20 @@ testDroplet2Out:
 			lda dropletPosY+2
 			cmp #$ca
 			bcc droplet2OK
+samePos2:				
 			jsr randomize
+			
+			cmp dropletPosX
+			beq samePos2
+			cmp dropletPosX+4
+			beq samePos2
+			cmp dropletPosX+6
+			beq samePos2
+			cmp dropletPosX+8
+			beq samePos2
+			cmp dropletPosX+10
+			beq samePos2
+
 			sta dropletPosX+2
 			lda #0
 			sta dropletPosY+2
@@ -794,7 +864,20 @@ testDroplet3Out:
 			lda dropletPosY+4
 			cmp #$ca
 			bcc droplet3OK
+samePos3:
 			jsr randomize 
+			
+			cmp dropletPosX
+			beq samePos3
+			cmp dropletPosX+2
+			beq samePos3
+			cmp dropletPosX+6
+			beq samePos3
+			cmp dropletPosX+8
+			beq samePos3
+			cmp dropletPosX+10
+			beq samePos3
+
 			sta dropletPosX+4
 			lda #0
 			sta dropletPosY+4
@@ -804,7 +887,20 @@ testDroplet4Out:
 			lda dropletPosY+6
 			cmp #$ca 
 			bcc droplet4OK
+samePos4:			
 			jsr randomize 
+			
+			cmp dropletPosX
+			beq samePos4
+			cmp dropletPosX+2
+			beq samePos4
+			cmp dropletPosX+4
+			beq samePos4
+			cmp dropletPosX+8
+			beq samePos4
+			cmp dropletPosX+10
+			beq samePos4
+
 			sta dropletPosX+6
 			lda #0
 			sta dropletPosY+6
@@ -814,6 +910,18 @@ testDroplet5Out:
 			lda dropletPosY+8
 			cmp #$ca
 			bcc droplet5OK
+samePos5:	
+			cmp dropletPosX
+			beq samePos5
+			cmp dropletPosX+2
+			beq samePos5
+			cmp dropletPosX+4
+			beq samePos5
+			cmp dropletPosX+6
+			beq samePos5
+			cmp dropletPosX+10
+			beq samePos5
+
 			jsr randomize
 			sta dropletPosX+8
 			lda #0
@@ -824,7 +932,20 @@ testDroplet6Out:
 			lda dropletPosY+10
 			cmp #$ca
 			bcc droplet6OK
+samePos6:
 			jsr randomize
+			
+			cmp dropletPosX
+			beq samePos6
+			cmp dropletPosX+2
+			beq samePos6
+			cmp dropletPosX+4
+			beq samePos6
+			cmp dropletPosX+6
+			beq samePos6
+			cmp dropletPosX+8
+			beq samePos6
+
 			sta dropletPosX+10
 			lda #0
 			sta dropletPosY+10
@@ -953,11 +1074,15 @@ noLettuceEaten:
 						
 // Score 500 points 
 
+			
+
 score500:	ldy #4
 scoreLoop0:
 			jsr scoreAdd
 			dey 
 			bpl scoreLoop0
+			// Play sound for slug eating lettuce
+			jsr playSlugEatSFX
 			rts
 
 scoreAdd:	inc score+3 
@@ -1041,7 +1166,11 @@ skipWaterCollision:
 slugHit:	lda lives
 			cmp #$31 // $31 = value 1 in lives as digits
 			beq lastLifeLost
-					
+
+			// Play slug hit SFX
+
+			jsr playSlugHitSFX
+
 			// Last life is not lost, so reset the 
 			// shield pointer, and timer and deduct one
 			// life from the counter
@@ -1064,6 +1193,9 @@ lastLifeLost:
 			sta explodeAnimDelay
 			sta explodeAnimPointer		
 
+			// Play sound of slug dying
+			jsr playSlugDeadSFX
+
 		// Similar loop to the main game, but only exclusive
 		// to the player death sequence.
 exploder:
@@ -1076,7 +1208,7 @@ exploder:
 
 doExplosion:
 			lda explodeAnimDelay
-			cmp #3 
+			cmp #2
 			beq doExplosion2
 			inc explodeAnimDelay
 			rts
@@ -1096,7 +1228,9 @@ doExplosion2:
 // The game is over. Remove all existing sprites
 // then setup the Game Over sprites.
 
-gameOver:	ldx #$00
+gameOver:	lda #$30
+			sta lives
+			ldx #$00
 clearSprScr: 
 			lda #$00
 			sta objPos,x 
@@ -1125,20 +1259,19 @@ clearSprScr:
 			lda letter_r
 			sta $07ff
 
+
+
 gameOverMain:
 			// Short delay ...
-
-			ldx #$00
-waste1:		ldy #$00
-waste2:		iny 
-			bne waste2
-			inx
-			bne waste1			
+ 
+			
+			lda #gameOverJingle 
+			jsr musicInit
 
 			// Force all sprite changable multicolour green
 
 			ldx #$00
-forceGreen:	lda #$0d
+forceGreen:	lda #$05
 			sta $d027,x 
 			inx 
 			cpx #$08 
@@ -1197,7 +1330,7 @@ gameOverLoop:
 			cmp rp
 			beq *-3
 			jsr expandMSB
-			
+			jsr animateWater
 			lda $dc00
 			lsr
 			lsr
@@ -1212,7 +1345,7 @@ gameOverLoop:
 
 //----------------------------------------------------------
 playTime:	lda clockDelay
-			cmp #$30
+			cmp timeExpiry
 			beq switchCounter
 			inc clockDelay
 			rts
@@ -1235,6 +1368,14 @@ switchCounter:
 			lda #$35
 			sta time+1
 			dec time
+			lda lives
+			cmp #$39
+			beq skipExtraLives
+
+			// Play extra lives sfx
+			jsr playExtraLifeSFX
+			
+skipExtraLives:
 			lda time 
 			cmp #$2f
 			bne clockOk
@@ -1275,7 +1416,52 @@ clearSPR:	lda #$00
 			sta $07fe
 			lda letter_e
 			sta $07ff
+
+			lda #wellDoneJingle 
+			jsr musicInit
+
 			jmp gameOverMain
+//----------------------------------------------------------
+
+// In game sound effects:
+
+// Slug jump 
+
+playSlugJumpSFX:
+			lda #<slugJumpSFX
+			ldy #>slugJumpSFX
+			ldx #14
+			jsr sfxInit
+			rts
+
+playSlugEatSFX:
+			lda #<slugEatSFX 
+			ldy #>slugEatSFX 
+			ldx #14
+			jsr sfxInit
+			rts 
+
+playSlugHitSFX:
+			lda #<slugHitSFX
+			ldy #>slugHitSFX 
+			ldx #14
+			jsr sfxInit
+			rts 
+
+playSlugDeadSFX:
+			lda #<slugDeadSFX
+			ldy #>slugDeadSFX
+			ldx #14
+			jsr sfxInit
+			rts
+
+playExtraLifeSFX:
+			lda #<extraLifeSFX
+			ldy #>extraLifeSFX
+			ldx #14
+			jsr sfxInit
+			rts
+
 
 //---------------------------------------------------------- 
 .import source "gamepointers.asm"
