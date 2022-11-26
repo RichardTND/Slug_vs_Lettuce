@@ -1,0 +1,83 @@
+SLUG VS LETTUCE
+by Richard Bayliss
+
+THE PROJECT
+
+Included with this note file you 
+should have the following files
+or filenames:
+
+c64 - folder that contains all 
+charpad, sprite pad, binary and
+program files
+
+buildit.txt (needs to be edited 
+and renamed to buildit.bat)
+
+gamecode.asm - Main game code
+gamepointers.asm - Game pointers
+labels.asm - Variables/labels 
+slug_vs_lettuce.asm - Target source
+titlescreen.asm - Title screen source code
+
+You are required the following tools for
+the code:
+
+- Any text editor that supports
+  Kick Assembler, like Notepad++, 
+  Visual Studio Code, Relaunch 64, etc.
+- Kick Assembler (latest version)
+- Exomizer V3.1.1 / PuCrunch / 
+  LZMPi or TSCrunch 
+- Vice V2.4 or higher.
+
+ASSEMBLING:
+
+Rename buildit.txt to buildit.bat. 
+Edit the buildit.bat file to MATCH
+the path of where you have placed the
+tools, and then save the batch file again.
+Then either using EXPLORER, or NOTEPAD++
+execute BUILDIT.BAT to compile, crunch 
+the game and finally run in VICE.
+
+ABOUT THE GAME
+
+Slug vs Lettuce is a fun little single
+screen platform game. The aim of this
+little game is to help your slug 
+jump onto the platforms and feed it
+as much lettuce as you possibly can.
+
+There is one problem. The cave in 
+which the slug is quite deadly. Giant
+water droplets appear from the top
+and fall at varied speed. If the
+water hits your slug, then you will
+lose one life. You will be protected
+for a short period of time but, once
+your shield has run out, you will 
+become more vulnerable to the water.
+
+You quest is also for survival. You
+will have approximately 10 minutes
+to survive before all of your lives
+have run out. If you survive you 
+win. 
+
+Extra lives are given after one
+minute has expired unless of 
+course you already have 9 lives.
+
+Keep on scoring as many points as 
+you possibly can. Have fun!
+
+GAME CONTROLS:
+
+Use joystick in port 2.
+
+LEFT/RIGHT - Run
+FIRE - Jump
+
+(C)2022 The New Dimension for
+Scene World Magazine.
